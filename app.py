@@ -21,6 +21,23 @@ st.set_page_config(
 
 
 # =========================
+# Session State
+# =========================
+
+if "uploader_key" not in st.session_state:
+    st.session_state.uploader_key = 0
+
+
+def clear_selected_upload_files():
+    """
+    清空 file_uploader 已選擇但尚未上傳的檔案
+    做法：改變 file_uploader 的 key，讓 Streamlit 重新建立元件
+    """
+    st.session_state.uploader_key += 1
+    st.rerun()
+
+
+# =========================
 # CSS 介面樣式
 # =========================
 
@@ -74,7 +91,7 @@ st.markdown(
         border: 1px solid #005fe6 !important;
     }
 
-    /* primary button 用紅色，給刪除功能使用 */
+    /* primary button 紅色，給刪除 / 清空使用 */
     div[data-testid="stButton"] button[kind="primary"] {
         background-color: #ff3b30 !important;
         color: white !important;
@@ -106,11 +123,20 @@ st.markdown(
         font-weight: 800;
         color: #17233c;
         margin-bottom: 12px;
+        word-break: break-all;
     }
 
     .file-info {
         font-size: 16px;
         color: #17233c;
+        margin-bottom: 8px;
+    }
+
+    /* 上傳區按鈕間距 */
+    .upload-note {
+        color: #6b7280;
+        font-size: 14px;
+        margin-top: -6px;
         margin-bottom: 8px;
     }
     </style>
@@ -218,7 +244,7 @@ def create_zip_file(files):
 # =========================
 
 st.title("📁 Alan資料傳輸平台")
-st.caption("告訴我你會買日月光")
+st.caption("簡易檔案上傳、下載、清空與刪除平台")
 
 st.divider()
 
@@ -231,27 +257,45 @@ st.header("📤 上傳檔案")
 
 uploaded_files = st.file_uploader(
     "選擇要上傳的檔案",
-    accept_multiple_files=True
+    accept_multiple_files=True,
+    key=f"file_uploader_{st.session_state.uploader_key}"
 )
 
 if uploaded_files:
     st.info(f"已選擇 {len(uploaded_files)} 個檔案")
 
-    if st.button("開始上傳"):
-        success_count = 0
+    selected_total_size = sum(file.size for file in uploaded_files)
 
-        for uploaded_file in uploaded_files:
-            try:
-                new_file_name = save_uploaded_file(uploaded_file)
-                st.success(f"上傳成功：{new_file_name}")
-                success_count += 1
+    st.write(f"待上傳總容量：{format_file_size(selected_total_size)}")
 
-            except Exception as e:
-                st.error(f"上傳失敗：{uploaded_file.name}")
-                st.exception(e)
+    upload_col1, upload_col2, upload_col3 = st.columns([1.2, 1.4, 4])
 
-        st.info(f"完成，上傳成功 {success_count} 個檔案")
-        st.rerun()
+    with upload_col1:
+        if st.button("開始上傳"):
+            success_count = 0
+
+            for uploaded_file in uploaded_files:
+                try:
+                    new_file_name = save_uploaded_file(uploaded_file)
+                    st.success(f"上傳成功：{new_file_name}")
+                    success_count += 1
+
+                except Exception as e:
+                    st.error(f"上傳失敗：{uploaded_file.name}")
+                    st.exception(e)
+
+            st.info(f"完成，上傳成功 {success_count} 個檔案")
+
+            # 上傳完成後，自動清空待上傳檔案
+            st.session_state.uploader_key += 1
+            st.rerun()
+
+    with upload_col2:
+        if st.button("清空待上傳檔案", type="primary"):
+            clear_selected_upload_files()
+
+else:
+    st.caption("目前尚未選擇要上傳的檔案。")
 
 
 st.divider()
@@ -295,14 +339,14 @@ st.write(f"目前顯示 {len(files)} 個檔案")
 
 
 # =========================
-# 危險操作區
+# 全部上傳下載 / 危險操作區
 # =========================
 
 if len(all_files) > 0:
     with st.expander("⚠️ 全部上傳下載"):
         st.warning("清空後無法復原。")
 
-        col_download_all, col_clear = st.columns([2, 2])
+        col_clear, col_download_all = st.columns([2, 2])
 
         with col_clear:
             if st.button("清空所有檔案", type="primary"):
