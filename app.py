@@ -302,7 +302,7 @@ if len(all_files) > 0:
     with st.expander("⚠️ 危險操作"):
         st.warning("清空後無法復原。")
 
-        col_clear, col_download_all = st.columns([1, 2])
+        col_clear, col_download_all = st.columns([2, 1])
 
         with col_clear:
             if st.button("清空所有檔案", type="primary"):
