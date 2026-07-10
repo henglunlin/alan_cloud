@@ -14,7 +14,7 @@ UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 st.set_page_config(
-    page_title="簡易資料傳輸平台",
+    page_title="Alan資料傳輸平台",
     page_icon="📁",
     layout="centered"
 )
@@ -217,8 +217,8 @@ def create_zip_file(files):
 # 主畫面
 # =========================
 
-st.title("📁 簡易資料傳輸平台")
-st.caption("使用 Python + Streamlit 製作的簡單檔案上傳、下載、刪除工具")
+st.title("📁 Alan資料傳輸平台")
+st.caption("告訴我你會買日月光")
 
 st.divider()
 
@@ -299,7 +299,7 @@ st.write(f"目前顯示 {len(files)} 個檔案")
 # =========================
 
 if len(all_files) > 0:
-    with st.expander("⚠️ 危險操作"):
+    with st.expander("⚠️ 全部上傳下載"):
         st.warning("清空後無法復原。")
 
         col_download_all, col_clear = st.columns([2, 2])
