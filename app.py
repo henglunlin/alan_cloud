@@ -1,6 +1,8 @@
 import streamlit as st
 import os
 import re
+import zipfile
+from io import BytesIO
 from datetime import datetime
 
 
@@ -9,7 +11,6 @@ from datetime import datetime
 # =========================
 
 UPLOAD_FOLDER = "uploads"
-
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 st.set_page_config(
@@ -20,36 +21,121 @@ st.set_page_config(
 
 
 # =========================
+# CSS 介面樣式
+# =========================
+
+st.markdown(
+    """
+    <style>
+    /* 頁面整體 */
+    .block-container {
+        padding-top: 2rem;
+        max-width: 900px;
+    }
+
+    /* 標題 */
+    h1 {
+        font-size: 38px !important;
+        font-weight: 800 !important;
+        color: #17233c;
+    }
+
+    h2, h3 {
+        color: #17233c;
+    }
+
+    /* 搜尋框 */
+    div[data-testid="stTextInput"] input {
+        border-radius: 8px;
+        background-color: #f1f3f6;
+        border: 1px solid #e1e5eb;
+        height: 46px;
+    }
+
+    /* 檔案卡片 */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        border-radius: 10px;
+        border: 1px solid #d9dee7;
+        background-color: #ffffff;
+    }
+
+    /* 下載按鈕：藍色 */
+    div[data-testid="stDownloadButton"] button {
+        background-color: #1f77ff !important;
+        color: white !important;
+        border: 1px solid #1f77ff !important;
+        border-radius: 6px !important;
+        font-weight: 600 !important;
+    }
+
+    div[data-testid="stDownloadButton"] button:hover {
+        background-color: #005fe6 !important;
+        color: white !important;
+        border: 1px solid #005fe6 !important;
+    }
+
+    /* primary button 用紅色，給刪除功能使用 */
+    div[data-testid="stButton"] button[kind="primary"] {
+        background-color: #ff3b30 !important;
+        color: white !important;
+        border: 1px solid #ff3b30 !important;
+        border-radius: 6px !important;
+        font-weight: 600 !important;
+    }
+
+    div[data-testid="stButton"] button[kind="primary"]:hover {
+        background-color: #d92d24 !important;
+        color: white !important;
+        border: 1px solid #d92d24 !important;
+    }
+
+    /* 一般按鈕 */
+    div[data-testid="stButton"] button[kind="secondary"] {
+        border-radius: 6px !important;
+        font-weight: 500 !important;
+    }
+
+    /* 提示區塊 */
+    div[data-testid="stAlert"] {
+        border-radius: 8px;
+    }
+
+    /* 讓檔名更醒目 */
+    .file-title {
+        font-size: 26px;
+        font-weight: 800;
+        color: #17233c;
+        margin-bottom: 12px;
+    }
+
+    .file-info {
+        font-size: 16px;
+        color: #17233c;
+        margin-bottom: 8px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+
+# =========================
 # 工具函式
 # =========================
 
 def clean_file_name(file_name):
-    """
-    清理檔名，避免特殊路徑或奇怪符號
-    """
     file_name = os.path.basename(file_name)
     file_name = re.sub(r'[\\/*?:"<>|]', "_", file_name)
     return file_name
 
 
 def get_unique_file_name(file_name):
-    """
-    加上時間戳，避免檔名重複覆蓋
-    """
     clean_name = clean_file_name(file_name)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
     return f"{timestamp}_{clean_name}"
 
 
-def get_file_size_bytes(file_path):
-    return os.path.getsize(file_path)
-
-
 def format_file_size(size):
-    """
-    將 bytes 轉成容易閱讀的格式
-    """
     if size < 1024:
         return f"{size} B"
     elif size < 1024 * 1024:
@@ -61,30 +147,24 @@ def format_file_size(size):
 
 
 def save_uploaded_file(uploaded_file):
-    """
-    儲存上傳檔案
-    """
     new_file_name = get_unique_file_name(uploaded_file.name)
     file_path = os.path.join(UPLOAD_FOLDER, new_file_name)
 
     with open(file_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
 
-    return new_file_name, file_path
+    return new_file_name
 
 
 def list_files():
-    """
-    取得 uploads 資料夾內所有檔案
-    """
     files = []
 
     for file_name in os.listdir(UPLOAD_FOLDER):
         file_path = os.path.join(UPLOAD_FOLDER, file_name)
 
         if os.path.isfile(file_path):
+            size_bytes = os.path.getsize(file_path)
             modified_timestamp = os.path.getmtime(file_path)
-            size_bytes = get_file_size_bytes(file_path)
 
             files.append({
                 "name": file_name,
@@ -107,17 +187,11 @@ def list_files():
 
 
 def delete_file(file_path):
-    """
-    刪除單一檔案
-    """
     if os.path.exists(file_path):
         os.remove(file_path)
 
 
 def delete_all_files():
-    """
-    刪除所有檔案
-    """
     for file_name in os.listdir(UPLOAD_FOLDER):
         file_path = os.path.join(UPLOAD_FOLDER, file_name)
 
@@ -125,30 +199,26 @@ def delete_all_files():
             os.remove(file_path)
 
 
+def create_zip_file(files):
+    zip_buffer = BytesIO()
+
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for file in files:
+            zip_file.write(
+                file["path"],
+                arcname=file["name"]
+            )
+
+    zip_buffer.seek(0)
+    return zip_buffer
+
+
 # =========================
-# 畫面
+# 主畫面
 # =========================
 
 st.title("📁 簡易資料傳輸平台")
 st.caption("使用 Python + Streamlit 製作的簡單檔案上傳、下載、刪除工具")
-
-st.divider()
-
-
-# =========================
-# 系統狀態
-# =========================
-
-files = list_files()
-total_size = sum(file["size_bytes"] for file in files)
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.metric("目前檔案數量", len(files))
-
-with col2:
-    st.metric("目前總容量", format_file_size(total_size))
 
 st.divider()
 
@@ -167,12 +237,12 @@ uploaded_files = st.file_uploader(
 if uploaded_files:
     st.info(f"已選擇 {len(uploaded_files)} 個檔案")
 
-    if st.button("開始上傳", type="primary"):
+    if st.button("開始上傳"):
         success_count = 0
 
         for uploaded_file in uploaded_files:
             try:
-                new_file_name, file_path = save_uploaded_file(uploaded_file)
+                new_file_name = save_uploaded_file(uploaded_file)
                 st.success(f"上傳成功：{new_file_name}")
                 success_count += 1
 
@@ -188,47 +258,94 @@ st.divider()
 
 
 # =========================
-# 檔案列表區
+# 檔案列表與下載
 # =========================
 
 st.header("📥 檔案列表與下載")
 
-files = list_files()
+all_files = list_files()
+
+total_size = sum(file["size_bytes"] for file in all_files)
+
+metric_col1, metric_col2 = st.columns(2)
+
+with metric_col1:
+    st.metric("檔案數量", len(all_files))
+
+with metric_col2:
+    st.metric("總容量", format_file_size(total_size))
+
 
 search_keyword = st.text_input(
     "搜尋檔案",
     placeholder="輸入檔名關鍵字"
 )
 
+
+files = all_files
+
 if search_keyword:
     files = [
-        file for file in files
+        file for file in all_files
         if search_keyword.lower() in file["name"].lower()
     ]
 
 
-if len(files) == 0:
-    st.info("目前沒有任何檔案")
-else:
-    st.write(f"目前顯示 {len(files)} 個檔案")
+st.write(f"目前顯示 {len(files)} 個檔案")
 
+
+# =========================
+# 危險操作區
+# =========================
+
+if len(all_files) > 0:
     with st.expander("⚠️ 危險操作"):
         st.warning("清空後無法復原。")
 
-        if st.button("清空所有檔案"):
-            delete_all_files()
-            st.success("已清空所有檔案")
-            st.rerun()
+        col_clear, col_download_all = st.columns([1, 2])
 
+        with col_clear:
+            if st.button("清空所有檔案", type="primary"):
+                delete_all_files()
+                st.success("已清空所有檔案")
+                st.rerun()
+
+        with col_download_all:
+            zip_buffer = create_zip_file(all_files)
+
+            st.download_button(
+                label="下載所有檔案",
+                data=zip_buffer,
+                file_name=f"all_files_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+                mime="application/zip",
+                key="download_all_files"
+            )
+
+
+st.divider()
+
+
+# =========================
+# 檔案卡片
+# =========================
+
+if len(files) == 0:
+    st.info("目前沒有任何檔案")
+else:
     for file in files:
         with st.container(border=True):
-            st.subheader(file["name"])
-            st.write(f"檔案大小：{file['size']}")
-            st.write(f"修改時間：{file['modified_time']}")
+            st.markdown(
+                f"""
+                <div class="file-title">{file["name"]}</div>
+                <div class="file-info">檔案大小：{file["size"]}</div>
+                <div class="file-info">修改時間：{file["modified_time"]}</div>
+                """,
+                unsafe_allow_html=True
+            )
 
-            col1, col2 = st.columns(2)
+            button_col1, button_col2, button_col3 = st.columns([1, 4, 1])
 
-            with col1:
+            with button_col1:
                 with open(file["path"], "rb") as f:
                     file_data = f.read()
 
@@ -239,8 +356,12 @@ else:
                     key=f"download_{file['name']}"
                 )
 
-            with col2:
-                if st.button("刪除", key=f"delete_{file['name']}"):
+            with button_col3:
+                if st.button(
+                    "刪除",
+                    key=f"delete_{file['name']}",
+                    type="primary"
+                ):
                     delete_file(file["path"])
                     st.warning(f"已刪除：{file['name']}")
                     st.rerun()
