@@ -244,7 +244,7 @@ def create_zip_file(files):
 # =========================
 
 st.title("📁 Alan資料傳輸平台")
-st.caption("簡易檔案上傳、下載、清空與刪除平台")
+st.caption("告訴我你會買日月光")
 
 st.divider()
 
