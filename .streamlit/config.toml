@@ -5,3 +5,4 @@ maxUploadSize = 10240
 headless = true
 port = 8501
 enableCORS = false
+enableStaticServing = true
