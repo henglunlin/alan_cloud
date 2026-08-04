@@ -2,15 +2,15 @@ import streamlit as st
 import os
 import re
 import zipfile
-from io import BytesIO
+import urllib.parse
 from datetime import datetime
-
 
 # =========================
 # 基本設定
 # =========================
 
-UPLOAD_FOLDER = "uploads"
+# 【修改點】將儲存資料夾改為 "static"，以配合 Streamlit 的靜態檔案服務
+UPLOAD_FOLDER = "static"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 st.set_page_config(
@@ -31,7 +31,6 @@ if "uploader_key" not in st.session_state:
 def clear_selected_upload_files():
     """
     清空 file_uploader 已選擇但尚未上傳的檔案
-    做法：改變 file_uploader 的 key，讓 Streamlit 重新建立元件
     """
     st.session_state.uploader_key += 1
     st.rerun()
@@ -76,19 +75,28 @@ st.markdown(
         background-color: #ffffff;
     }
 
-    /* 下載按鈕：藍色 */
-    div[data-testid="stDownloadButton"] button {
-        background-color: #1f77ff !important;
+    /* 
+      【修改點】新增客製化 HTML 按鈕樣式，
+      讓新的 HTML a 標籤長得跟原本的 st.download_button 一模一樣 
+    */
+    .download-link-btn {
+        display: inline-block;
+        background-color: #1f77ff;
         color: white !important;
-        border: 1px solid #1f77ff !important;
-        border-radius: 6px !important;
-        font-weight: 600 !important;
+        border: 1px solid #1f77ff;
+        border-radius: 6px;
+        font-weight: 600;
+        padding: 0.35rem 0.75rem;
+        text-decoration: none;
+        text-align: center;
+        font-size: 1rem;
+        width: 100%;
+        box-sizing: border-box;
     }
 
-    div[data-testid="stDownloadButton"] button:hover {
-        background-color: #005fe6 !important;
-        color: white !important;
-        border: 1px solid #005fe6 !important;
+    .download-link-btn:hover {
+        background-color: #005fe6;
+        border: 1px solid #005fe6;
     }
 
     /* primary button 紅色，給刪除 / 清空使用 */
@@ -132,13 +140,6 @@ st.markdown(
         margin-bottom: 8px;
     }
 
-    /* 上傳區按鈕間距 */
-    .upload-note {
-        color: #6b7280;
-        font-size: 14px;
-        margin-top: -6px;
-        margin-bottom: 8px;
-    }
     </style>
     """,
     unsafe_allow_html=True
@@ -176,6 +177,7 @@ def save_uploaded_file(uploaded_file):
     new_file_name = get_unique_file_name(uploaded_file.name)
     file_path = os.path.join(UPLOAD_FOLDER, new_file_name)
 
+    # 寫入硬碟
     with open(file_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
 
@@ -184,7 +186,6 @@ def save_uploaded_file(uploaded_file):
 
 def list_files():
     files = []
-
     for file_name in os.listdir(UPLOAD_FOLDER):
         file_path = os.path.join(UPLOAD_FOLDER, file_name)
 
@@ -208,7 +209,6 @@ def list_files():
         key=lambda x: x["modified_timestamp"],
         reverse=True
     )
-
     return files
 
 
@@ -220,23 +220,8 @@ def delete_file(file_path):
 def delete_all_files():
     for file_name in os.listdir(UPLOAD_FOLDER):
         file_path = os.path.join(UPLOAD_FOLDER, file_name)
-
         if os.path.isfile(file_path):
             os.remove(file_path)
-
-
-def create_zip_file(files):
-    zip_buffer = BytesIO()
-
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        for file in files:
-            zip_file.write(
-                file["path"],
-                arcname=file["name"]
-            )
-
-    zip_buffer.seek(0)
-    return zip_buffer
 
 
 # =========================
@@ -265,7 +250,6 @@ if uploaded_files:
     st.info(f"已選擇 {len(uploaded_files)} 個檔案")
 
     selected_total_size = sum(file.size for file in uploaded_files)
-
     st.write(f"待上傳總容量：{format_file_size(selected_total_size)}")
 
     upload_col1, upload_col2, upload_col3 = st.columns([1.2, 1.4, 4])
@@ -273,20 +257,16 @@ if uploaded_files:
     with upload_col1:
         if st.button("開始上傳"):
             success_count = 0
-
             for uploaded_file in uploaded_files:
                 try:
                     new_file_name = save_uploaded_file(uploaded_file)
                     st.success(f"上傳成功：{new_file_name}")
                     success_count += 1
-
                 except Exception as e:
                     st.error(f"上傳失敗：{uploaded_file.name}")
                     st.exception(e)
 
             st.info(f"完成，上傳成功 {success_count} 個檔案")
-
-            # 上傳完成後，自動清空待上傳檔案
             st.session_state.uploader_key += 1
             st.rerun()
 
@@ -308,32 +288,23 @@ st.divider()
 st.header("📥 檔案列表與下載")
 
 all_files = list_files()
-
 total_size = sum(file["size_bytes"] for file in all_files)
 
 metric_col1, metric_col2 = st.columns(2)
 
 with metric_col1:
     st.metric("檔案數量", len(all_files))
-
 with metric_col2:
     st.metric("總容量", format_file_size(total_size))
 
-
-search_keyword = st.text_input(
-    "搜尋檔案",
-    placeholder="輸入檔名關鍵字"
-)
-
+search_keyword = st.text_input("搜尋檔案", placeholder="輸入檔名關鍵字")
 
 files = all_files
-
 if search_keyword:
     files = [
         file for file in all_files
         if search_keyword.lower() in file["name"].lower()
     ]
-
 
 st.write(f"目前顯示 {len(files)} 個檔案")
 
@@ -343,8 +314,8 @@ st.write(f"目前顯示 {len(files)} 個檔案")
 # =========================
 
 if len(all_files) > 0:
-    with st.expander("⚠️ 全部上傳下載"):
-        st.warning("清空後無法復原。")
+    with st.expander("⚠️ 批次處理區 (下載所有檔案 / 清空)"):
+        st.warning("刪除清空後無法復原。")
 
         col_clear, col_download_all = st.columns([2, 2])
 
@@ -355,15 +326,25 @@ if len(all_files) > 0:
                 st.rerun()
 
         with col_download_all:
-            zip_buffer = create_zip_file(all_files)
-
-            st.download_button(
-                label="下載所有檔案",
-                data=zip_buffer,
-                file_name=f"all_files_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
-                mime="application/zip",
-                key="download_all_files"
-            )
+            # 【修改點】將「寫入記憶體」改為「寫入實體硬碟的 static 資料夾」再提供連結
+            if st.button("打包並產生『所有檔案』下載連結"):
+                with st.spinner("正在打包中，檔案若較大請耐心等候..."):
+                    zip_filename = f"all_files_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+                    zip_path = os.path.join(UPLOAD_FOLDER, zip_filename)
+                    
+                    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                        for f_info in all_files:
+                            # 排除原本就是壓縮包的產物，避免無限迴圈打包
+                            if not f_info["name"].startswith("all_files_"):
+                                zip_file.write(f_info["path"], arcname=f_info["name"])
+                    
+                    st.success("打包完成！")
+                    # 透過 URL encode 避免檔名錯誤
+                    quoted_zip = urllib.parse.quote(zip_filename)
+                    st.markdown(
+                        f'<a href="/app/static/{quoted_zip}" download="{zip_filename}" class="download-link-btn" target="_blank">📥 點此下載 ZIP 壓縮檔</a>',
+                        unsafe_allow_html=True
+                    )
 
 
 st.divider()
@@ -390,22 +371,16 @@ else:
             button_col1, button_col2, button_col3 = st.columns([1, 4, 1])
 
             with button_col1:
-                with open(file["path"], "rb") as f:
-                    file_data = f.read()
-
-                st.download_button(
-                    label="下載",
-                    data=file_data,
-                    file_name=file["name"],
-                    key=f"download_{file['name']}"
+                # 【修改點】不再讀取檔案到記憶體，直接產生一個靜態下載連結
+                # 將檔名 URL 編碼處理以支援中文及空格
+                quoted_name = urllib.parse.quote(file["name"])
+                st.markdown(
+                    f'<a href="/app/static/{quoted_name}" download="{file["name"]}" class="download-link-btn" target="_blank">下載</a>',
+                    unsafe_allow_html=True
                 )
 
             with button_col3:
-                if st.button(
-                    "刪除",
-                    key=f"delete_{file['name']}",
-                    type="primary"
-                ):
+                if st.button("刪除", key=f"delete_{file['name']}", type="primary"):
                     delete_file(file["path"])
                     st.warning(f"已刪除：{file['name']}")
                     st.rerun()
