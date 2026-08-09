@@ -341,8 +341,10 @@ if len(all_files) > 0:
                     st.success("打包完成！")
                     # 透過 URL encode 避免檔名錯誤
                     quoted_zip = urllib.parse.quote(zip_filename)
+                    
+                    # 【重要修正】拿掉最前面的斜線，改為相對路徑 app/static/
                     st.markdown(
-                        f'<a href="/app/static/{quoted_zip}" download="{zip_filename}" class="download-link-btn" target="_blank">📥 點此下載 ZIP 壓縮檔</a>',
+                        f'<a href="app/static/{quoted_zip}" download="{zip_filename}" class="download-link-btn" target="_blank">📥 點此下載 ZIP 壓縮檔</a>',
                         unsafe_allow_html=True
                     )
 
@@ -374,8 +376,10 @@ else:
                 # 【修改點】不再讀取檔案到記憶體，直接產生一個靜態下載連結
                 # 將檔名 URL 編碼處理以支援中文及空格
                 quoted_name = urllib.parse.quote(file["name"])
+                
+                # 【重要修正】拿掉最前面的斜線，改為相對路徑 app/static/
                 st.markdown(
-                    f'<a href="/app/static/{quoted_name}" download="{file["name"]}" class="download-link-btn" target="_blank">下載</a>',
+                    f'<a href="app/static/{quoted_name}" download="{file["name"]}" class="download-link-btn" target="_blank">下載</a>',
                     unsafe_allow_html=True
                 )
 
