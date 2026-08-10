@@ -8,7 +8,6 @@ from datetime import datetime
 # 基本設定
 # =========================
 
-# 儲存資料夾設定為 "static"
 UPLOAD_FOLDER = "static"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -20,11 +19,16 @@ st.set_page_config(
 
 
 # =========================
-# Session State
+# Session State 初始化
 # =========================
 
 if "uploader_key" not in st.session_state:
     st.session_state.uploader_key = 0
+
+# 新增：用來記錄最新打包出來的 ZIP 路徑，避免無限重複打包
+if "latest_zip_path" not in st.session_state:
+    st.session_state.latest_zip_path = None
+    st.session_state.latest_zip_name = None
 
 
 def clear_selected_upload_files():
@@ -259,6 +263,10 @@ if uploaded_files:
 
             st.info(f"完成，上傳成功 {success_count} 個檔案")
             st.session_state.uploader_key += 1
+            
+            # 上傳新檔案後，清除舊的打包紀錄
+            st.session_state.latest_zip_path = None
+            st.session_state.latest_zip_name = None
             st.rerun()
 
     with upload_col2:
@@ -313,34 +321,45 @@ if len(all_files) > 0:
         with col_clear:
             if st.button("清空所有檔案", type="primary"):
                 delete_all_files()
+                st.session_state.latest_zip_path = None
+                st.session_state.latest_zip_name = None
                 st.success("已清空所有檔案")
                 st.rerun()
 
         with col_download_all:
-            # 建立 ZIP 檔案名稱與路徑
-            zip_filename = f"all_files_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
-            zip_path = os.path.join(UPLOAD_FOLDER, zip_filename)
-            
-            # 確認 static 資料夾內是否有除了之前產生的 zip 以外的檔案需要打包
-            has_files_to_zip = any(not f["name"].startswith("all_files_") for f in all_files)
+            # 【關鍵修復】將「打包」與「下載」分成兩階段，避免無限增生 ZIP
+            if st.button("📦 產生『所有檔案』壓縮檔"):
+                # 確認 static 資料夾內是否有除了之前產生的 zip 以外的檔案需要打包
+                has_files_to_zip = any(not f["name"].startswith("all_files_") for f in all_files)
 
-            if has_files_to_zip:
-                # 動態產生 ZIP
-                with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zip_file:
-                    for f_info in all_files:
-                        if not f_info["name"].startswith("all_files_"):
-                            zip_file.write(f_info["path"], arcname=f_info["name"])
-                
-                # 透過檔案指標讓 st.download_button 下載，避免記憶體爆滿
-                with open(zip_path, "rb") as f:
+                if has_files_to_zip:
+                    with st.spinner("正在打包中，檔案較大請稍候..."):
+                        zip_filename = f"all_files_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+                        zip_path = os.path.join(UPLOAD_FOLDER, zip_filename)
+                        
+                        # 動態產生 ZIP
+                        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                            for f_info in all_files:
+                                if not f_info["name"].startswith("all_files_"):
+                                    zip_file.write(f_info["path"], arcname=f_info["name"])
+                        
+                        # 紀錄到 Session State 讓下載按鈕可以讀取
+                        st.session_state.latest_zip_path = zip_path
+                        st.session_state.latest_zip_name = zip_filename
+                        st.rerun() # 重整畫面以顯示下載按鈕
+                else:
+                    st.warning("目前沒有可打包的檔案")
+
+            # 如果已經有打包好的檔案，就顯示下載按鈕
+            if st.session_state.latest_zip_path and os.path.exists(st.session_state.latest_zip_path):
+                st.success(f"✅ 打包完成！可以下載了。")
+                with open(st.session_state.latest_zip_path, "rb") as f:
                     st.download_button(
-                        label="📥 下載所有檔案 (ZIP)",
+                        label="📥 點此下載 ZIP 壓縮檔",
                         data=f,
-                        file_name=zip_filename,
+                        file_name=st.session_state.latest_zip_name,
                         key="download_all_zip_btn"
                     )
-            else:
-                st.write("目前沒有可打包的檔案")
 
 
 st.divider()
@@ -367,7 +386,7 @@ else:
             button_col1, button_col2, button_col3 = st.columns([1, 4, 1])
 
             with button_col1:
-                # 改回原生 st.download_button，並使用檔案指標 (file pointer) 傳遞
+                # 使用檔案指標 (file pointer) 傳遞，避免記憶體不足
                 with open(file["path"], "rb") as f:
                     st.download_button(
                         label="下載",
