@@ -2,14 +2,13 @@ import streamlit as st
 import os
 import re
 import zipfile
-import urllib.parse
 from datetime import datetime
 
 # =========================
 # 基本設定
 # =========================
 
-# 【修改點】將儲存資料夾改為 "static"，以配合 Streamlit 的靜態檔案服務
+# 儲存資料夾設定為 "static"
 UPLOAD_FOLDER = "static"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -75,28 +74,20 @@ st.markdown(
         background-color: #ffffff;
     }
 
-    /* 
-      【修改點】新增客製化 HTML 按鈕樣式，
-      讓新的 HTML a 標籤長得跟原本的 st.download_button 一模一樣 
-    */
-    .download-link-btn {
-        display: inline-block;
-        background-color: #1f77ff;
+    /* 下載按鈕：藍色 */
+    div[data-testid="stDownloadButton"] button {
+        background-color: #1f77ff !important;
         color: white !important;
-        border: 1px solid #1f77ff;
-        border-radius: 6px;
-        font-weight: 600;
-        padding: 0.35rem 0.75rem;
-        text-decoration: none;
-        text-align: center;
-        font-size: 1rem;
+        border: 1px solid #1f77ff !important;
+        border-radius: 6px !important;
+        font-weight: 600 !important;
         width: 100%;
-        box-sizing: border-box;
     }
 
-    .download-link-btn:hover {
-        background-color: #005fe6;
-        border: 1px solid #005fe6;
+    div[data-testid="stDownloadButton"] button:hover {
+        background-color: #005fe6 !important;
+        color: white !important;
+        border: 1px solid #005fe6 !important;
     }
 
     /* primary button 紅色，給刪除 / 清空使用 */
@@ -326,27 +317,30 @@ if len(all_files) > 0:
                 st.rerun()
 
         with col_download_all:
-            # 【修改點】將「寫入記憶體」改為「寫入實體硬碟的 static 資料夾」再提供連結
-            if st.button("打包並產生『所有檔案』下載連結"):
-                with st.spinner("正在打包中，檔案若較大請耐心等候..."):
-                    zip_filename = f"all_files_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
-                    zip_path = os.path.join(UPLOAD_FOLDER, zip_filename)
-                    
-                    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zip_file:
-                        for f_info in all_files:
-                            # 排除原本就是壓縮包的產物，避免無限迴圈打包
-                            if not f_info["name"].startswith("all_files_"):
-                                zip_file.write(f_info["path"], arcname=f_info["name"])
-                    
-                    st.success("打包完成！")
-                    # 透過 URL encode 避免檔名錯誤
-                    quoted_zip = urllib.parse.quote(zip_filename)
-                    
-                    # 【重要修正】拿掉最前面的斜線，改為相對路徑 app/static/
-                    st.markdown(
-                        f'<a href="app/static/{quoted_zip}" download="{zip_filename}" class="download-link-btn" target="_blank">📥 點此下載 ZIP 壓縮檔</a>',
-                        unsafe_allow_html=True
+            # 建立 ZIP 檔案名稱與路徑
+            zip_filename = f"all_files_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+            zip_path = os.path.join(UPLOAD_FOLDER, zip_filename)
+            
+            # 確認 static 資料夾內是否有除了之前產生的 zip 以外的檔案需要打包
+            has_files_to_zip = any(not f["name"].startswith("all_files_") for f in all_files)
+
+            if has_files_to_zip:
+                # 動態產生 ZIP
+                with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                    for f_info in all_files:
+                        if not f_info["name"].startswith("all_files_"):
+                            zip_file.write(f_info["path"], arcname=f_info["name"])
+                
+                # 透過檔案指標讓 st.download_button 下載，避免記憶體爆滿
+                with open(zip_path, "rb") as f:
+                    st.download_button(
+                        label="📥 下載所有檔案 (ZIP)",
+                        data=f,
+                        file_name=zip_filename,
+                        key="download_all_zip_btn"
                     )
+            else:
+                st.write("目前沒有可打包的檔案")
 
 
 st.divider()
@@ -373,15 +367,14 @@ else:
             button_col1, button_col2, button_col3 = st.columns([1, 4, 1])
 
             with button_col1:
-                # 【修改點】不再讀取檔案到記憶體，直接產生一個靜態下載連結
-                # 將檔名 URL 編碼處理以支援中文及空格
-                quoted_name = urllib.parse.quote(file["name"])
-                
-                # 【重要修正】拿掉最前面的斜線，改為相對路徑 app/static/
-                st.markdown(
-                    f'<a href="app/static/{quoted_name}" download="{file["name"]}" class="download-link-btn" target="_blank">下載</a>',
-                    unsafe_allow_html=True
-                )
+                # 改回原生 st.download_button，並使用檔案指標 (file pointer) 傳遞
+                with open(file["path"], "rb") as f:
+                    st.download_button(
+                        label="下載",
+                        data=f,
+                        file_name=file["name"],
+                        key=f"download_{file['name']}"
+                    )
 
             with button_col3:
                 if st.button("刪除", key=f"delete_{file['name']}", type="primary"):
